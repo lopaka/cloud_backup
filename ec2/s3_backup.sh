@@ -5,7 +5,7 @@
 # usage: s3_backup.sh s3://bucket/dir
 
 # redirect STDOUT and STDERR to logfile
-logfile=/tmp/s3backup-`date +%Y%m%d-%H%M%S`.log
+logfile=/var/log/s3backup-`date +%Y%m%d-%H%M%S`.log
 exec > $logfile 2>&1
 
 # check for lock file and if backup already running
