@@ -1,5 +1,9 @@
 #!/bin/bash -e
 
+# s3_backup.sh - will backup / to s3
+#
+# usage: s3_backup.sh s3://bucket/dir
+
 # redirect STDOUT and STDERR to logfile
 logfile=/tmp/s3backup-`date +%Y%m%d-%H%M%S`.log
 exec > $logfile 2>&1
