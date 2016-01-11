@@ -86,7 +86,7 @@ elsif ($action eq "rotate")
 
     print $snapshot_volume_id . " " . $volumes{$snapshot_volume_id} . "\n";
 
-    # Sort snapshots by date taken (start_time) most recent on top 
+    # Sort snapshots by date taken (start_time) most recent on top
     @sorted_snapshots = sort {$b cmp $a} (@{$snapshot_volume_ids{$snapshot_volume_id}});
 
     foreach $snapshot (@sorted_snapshots) {
@@ -113,12 +113,31 @@ elsif ($action eq "rotate")
 # List snapshots
 elsif ($action eq "list")
 {
+  my %snapshot_volume_ids;
+  my $snapshot_volume_id;
+  my $snapshot_date;
+
   $snapshots = $ec2->describe_snapshots(Owner => $ownerid);
+
+  # Place each snapshot object into array which is in hash with volume_id as key - hash of arrays.
   foreach $snapshot (@$snapshots) {
-     print "Snapshot description:  " . $snapshot->description . "\n";
-     print "  Volume_id snapshot:  " . $snapshot->volume_id . "\n";
-     print "  Snapshot ID:         " . $snapshot->snapshot_id . "\n";
-     print "  Snapshot Start Time: " . $snapshot->start_time . "\n";
+    push(@{$snapshot_volume_ids{$snapshot->volume_id}}, $snapshot);
+  }
+
+  foreach $snapshot_volume_id (keys(%snapshot_volume_ids)) {
+
+    # Sort snapshots by date taken (start_time) most recent on top
+    @sorted_snapshots = sort {$b->start_time cmp $a->start_time} (@{$snapshot_volume_ids{$snapshot_volume_id}});
+    print $snapshot_volume_id . " " . @sorted_snapshots[0]->description . "\n";
+
+    foreach $snapshot (@sorted_snapshots) {
+      print "  Snapshot info:  ";
+      print $snapshot->start_time . " ";
+      print $snapshot->description . " ";
+      print $snapshot->snapshot_id . "\n";
+
+    }
+    print "\n";
   }
 }
 else
