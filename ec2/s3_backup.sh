@@ -8,6 +8,8 @@
 logfile=/var/log/s3backup-`date +%Y%m%d-%H%M%S`.log
 exec > $logfile 2>&1
 
+start_time=`date +%s`
+echo "Starting time: ${start_time}"
 # check for lock file and if backup already running
 lockfile=/var/run/s3_backup.lock
 if [ -e ${lockfile} ]; then
@@ -58,3 +60,6 @@ s3cmd sync \
 --rexclude '^(proc|dev|tmp|media|mnt|sys|run|var\/run|var\/lock|var\/cache\/apt\/archives)/|^swapfile|^var\/lib\/php5\/sess_' \
 --cache-file=/var/run/s3cmd_cache \
 --delete-removed / $dest
+
+total_time=$((`date +%s`-start_time))
+echo "Total time: ${total_time}"
