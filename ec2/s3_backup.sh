@@ -55,6 +55,6 @@ fi
 
 s3cmd sync \
 --verbose \
---rexclude "^(proc|dev|tmp|media|mnt|sys|run|var\/run|var\/lock|var\/cache\/apt\/archives)/|^swapfile|^var\/lib\/php5\/sess_" \
+--rexclude '^(proc|dev|tmp|media|mnt|sys|run|var\/run|var\/lock|var\/cache\/apt\/archives)/|^swapfile|^var\/lib\/php5\/sess_' \
 --cache-file=/var/run/s3cmd_cache \
 --delete-removed / $dest
