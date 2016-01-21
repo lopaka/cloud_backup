@@ -10,6 +10,7 @@
 #   vol-11111111: description1
 #   vol-22222222: description2
 # num_of_snapshots_to_keep: 45
+# rotate_dry_run: false
 #
 
 $| = 1;
@@ -66,6 +67,7 @@ elsif ($action eq "rotate")
 {
   my $keep_counter;
   my $num_of_snapshots_to_keep = $config->{num_of_snapshots_to_keep};
+  my $rotate_dry_run = $config->{rotate_dry_run};
   my %snapshot_volume_ids;
   my $snapshot_volume_id;
   my $snapshot_date;
@@ -93,17 +95,22 @@ elsif ($action eq "rotate")
       ($snapshot_date, $snapshot_id) = split(/\t/,$snapshot);
 
       if ($keep_counter > 0) {
-        print "KEEPING $keep_counter $snapshot\n";
+        print "KEEPING $keep_counter/$num_of_snapshots_to_keep $snapshot\n";
         $keep_counter--;
-      }
-      else {
-        print "DELETING snapshot of $volumes{$snapshot_volume_id} - $snapshot_date ID=$snapshot_id - ";
-        $delete_snapshot = $ec2->delete_snapshot(SnapshotId => $snapshot_id);
-        if ($delete_snapshot) {
-          print "DONE\n"
-        }
-        else {
-          die "FAILED DELETION";
+      } else {
+        if ($rotate_dry_run) {
+          print "DRY RUN delete snapshot of $volumes{$snapshot_volume_id} - $snapshot_date ID=$snapshot_id\n";
+        } else {
+          print "DELETING snapshot of $volumes{$snapshot_volume_id} - $snapshot_date ID=$snapshot_id - ";
+          $delete_snapshot = $ec2->delete_snapshot(SnapshotId => $snapshot_id);
+          if ($delete_snapshot)
+          {
+            print "DONE\n"
+          }
+          else
+          {
+            die "FAILED DELETION";
+          }
         }
       }
     }
@@ -128,7 +135,7 @@ elsif ($action eq "list")
 
     # Sort snapshots by date taken (start_time) most recent on top
     @sorted_snapshots = sort {$b->start_time cmp $a->start_time} (@{$snapshot_volume_ids{$snapshot_volume_id}});
-    print $snapshot_volume_id . " " . @sorted_snapshots[0]->description . "\n";
+    print $snapshot_volume_id . " " . $sorted_snapshots[0]->description . "\n";
 
     foreach $snapshot (@sorted_snapshots) {
       print "  Snapshot info:  ";
