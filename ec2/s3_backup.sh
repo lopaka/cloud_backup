@@ -15,7 +15,7 @@ lockfile=/var/run/s3_backup.lock
 if [ -e ${lockfile} ]; then
   echo "Lock file exists - ${lockfile} - verifying pid"
   old_pid=`cat ${lockfile}`
-  pid_check=`ps -h -${old_pid} || echo 'fail'`
+  pid_check=`ps -h -p ${old_pid} || echo 'fail'`
   if [[ "${pid_check}" == 'fail' ]]; then
     echo "Lock file does not contain active pid (${old_pid}) - continuing"
   else
