@@ -55,11 +55,12 @@ else
   exit 1
 fi
 
+# return true in the event s3cmd fails in order to continue to end of script
 s3cmd sync \
 --verbose \
 --rexclude '^(proc|dev|tmp|media|mnt|sys|run|var\/run|var\/lock|var\/cache\/apt\/archives)/|^swapfile|^var\/lib\/php5\/sess_' \
 --cache-file=/var/run/s3cmd_cache \
---delete-removed / $dest
+--delete-removed / $dest || true
 
 total_time=$((`date +%s`-start_time))
 echo "Total time: ${total_time}"
