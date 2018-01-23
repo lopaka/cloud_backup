@@ -9,6 +9,7 @@
 #   SECRET_ACCESS_KEY=AbCdEfGhIjKlMnOpQrStUvWxYz78934+24jsldiu
 #   BUCKET_OBJECT=s3://bucket/object/
 #   SOURCE_DIR=/
+#   STORAGE_CLASS=STANDARD_IA
 #   REXCLUDE='^(proc|dev|tmp|media|mnt|sys|run|var\/run|var\/lock|var\/cache\/apt\/archives)/|^swapfile|^var\/lib\/php5\/sess_' \
 #   LOG_DIR=/var/log
 
@@ -31,6 +32,7 @@ REQUIRED_VARS="ACCESS_KEY_ID \
   SECRET_ACCESS_KEY \
   BUCKET_OBJECT \
   SOURCE_DIR \
+  STORAGE_CLASS \
   REXCLUDE \
   LOG_DIR"
 for check_var in ${REQUIRED_VARS}; do
@@ -96,6 +98,7 @@ s3cmd sync \
 --access_key=$ACCESS_KEY_ID \
 --secret_key=$SECRET_ACCESS_KEY \
 --verbose \
+--storage-class=$STORAGE_CLASS \
 --rexclude $REXCLUDE \
 --cache-file=/var/cache/s3cmd_cache \
 --delete-removed $SOURCE_DIR $BUCKET_OBJECT || true
