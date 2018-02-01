@@ -100,6 +100,9 @@ for source_dir in ${SOURCE_DIRS}; do
   fi
 done
 
+# Make sure cache dir exists
+mkdir -p /var/cache/s3cmd
+
 # Iterate backup of each directory in SOURCE_DIRS
 for source_dir in ${SOURCE_DIRS}; do
   echo "------ BACKING UP: ${source_dir}"
@@ -111,7 +114,7 @@ for source_dir in ${SOURCE_DIRS}; do
   --verbose \
   --storage-class=$STORAGE_CLASS \
   --rexclude $REXCLUDE \
-  --cache-file=/var/cache/s3cmd_cache \
+  --cache-file=/var/cache/s3cmd/sync_cache${source_dir//\//_} \
   --delete-removed $source_dir ${BUCKET_OBJECT%/}/${source_dir#/} || true
 done
 
