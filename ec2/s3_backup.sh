@@ -4,17 +4,18 @@
 #
 # usage: s3_backup.sh /path/to/config/file
 #
-# config file example (all variables required - order does not matter):
+# config file example - order does not matter:
+#   # REQUIRED:
 #   ACCESS_KEY_ID=ABCDEFGHIJKLMNOP1234
 #   SECRET_ACCESS_KEY=AbCdEfGhIjKlMnOpQrStUvWxYz78934+24jsldiu
 #   BUCKET_OBJECT=s3://bucket/object/
-#   SOURCE_DIR=/
+#   SOURCE_DIRS="/home /etc /usr/local"
 #   STORAGE_CLASS=STANDARD_IA
 #   REXCLUDE='^(proc|dev|tmp|media|mnt|sys|run|var\/run|var\/lock|var\/cache\/apt\/archives)/|^swapfile|^var\/lib\/php5\/sess_' \
 #   LOG_DIR=/var/log
-
-# verify s3cmd is installed
-s3cmd --version > /dev/null 2>&1 || (echo "s3cmd not installed" && exit 1)
+#   # OPTIONAL:
+#   S3CMD_PATH=/usr/local/bin/s3cmd
+#
 
 # Read in required config file
 if [[ $# -ne 1 ]]; then
@@ -31,7 +32,7 @@ source "$1"
 REQUIRED_VARS="ACCESS_KEY_ID \
   SECRET_ACCESS_KEY \
   BUCKET_OBJECT \
-  SOURCE_DIR \
+  SOURCE_DIRS \
   STORAGE_CLASS \
   REXCLUDE \
   LOG_DIR"
@@ -41,6 +42,14 @@ for check_var in ${REQUIRED_VARS}; do
     exit 1
   fi
 done
+
+# verify s3cmd is installed
+if [ -z ${S3CMD_PATH+x} ]; then
+  s3cmd=$(which s3cmd || echo '/bin/false')
+else
+  s3cmd=$S3CMD_PATH
+fi
+$s3cmd --version > /dev/null 2>&1 || (echo "s3cmd not installed" && exit 1)
 
 # redirect STDOUT and STDERR to logfile
 logfile="${LOG_DIR}/s3backup-$(date +%Y%m%d-%H%M%S).log"
@@ -72,13 +81,10 @@ if ! [[ $BUCKET_OBJECT =~ ^[sS]3:// ]]; then
 fi
 
 # Add trailing slash to dest making sure it's a directory
-if ! [[ $BUCKET_OBJECT =~ /$ ]]; then
-  echo "adding trailing slash"
-  BUCKET_OBJECT="${BUCKET_OBJECT}/"
-fi
+BUCKET_OBJECT="${BUCKET_OBJECT%/}/"
 
 # Verify existance and access to BUCKET_OBJECT
-bucket_info=$(s3cmd info --access_key="$ACCESS_KEY_ID" --secret_key="$SECRET_ACCESS_KEY" --quiet "$BUCKET_OBJECT" || echo 'fail')
+bucket_info=$($s3cmd info --access_key="$ACCESS_KEY_ID" --secret_key="$SECRET_ACCESS_KEY" --quiet "$BUCKET_OBJECT" || echo 'fail')
 if [[ "${bucket_info}" == 'fail' ]]; then
   echo "ERROR: $BUCKET_OBJECT does not exist or cannot access"
   exit 1
@@ -86,22 +92,27 @@ else
   echo "Sending backup to $BUCKET_OBJECT"
 fi
 
-# Verify source is a directory that exists
-if [ ! -d "${SOURCE_DIR}" ]; then
-  echo "ERROR: SOURCE_DIR (${SOURCE_DIR}) IS NOT A DIRECTORY"
-  exit 1
-fi
+# Verify each dir in directory list
+for source_dir in ${SOURCE_DIRS}; do
+  if [ ! -d "${source_dir}" ]; then
+    echo "ERROR: SOURCE DIRECTORY, ${source_dir}, IS NOT A DIRECTORY - EXITING"
+    exit 1
+  fi
+done
 
-# return true in the event s3cmd fails in order to continue to end of script
-# remember, STDOUT and STDERR are sent to logfile
-s3cmd sync \
---access_key=$ACCESS_KEY_ID \
---secret_key=$SECRET_ACCESS_KEY \
---verbose \
---storage-class=$STORAGE_CLASS \
---rexclude $REXCLUDE \
---cache-file=/var/cache/s3cmd_cache \
---delete-removed $SOURCE_DIR $BUCKET_OBJECT || true
+# Iterate backup of each directory in SOURCE_DIRS
+for source_dir in ${SOURCE_DIRS}; do
+  # Return true in the event s3cmd fails in order to continue with other backups.
+  # Remember, STDOUT and STDERR are sent to logfile
+  $s3cmd sync \
+  --access_key=$ACCESS_KEY_ID \
+  --secret_key=$SECRET_ACCESS_KEY \
+  --verbose \
+  --storage-class=$STORAGE_CLASS \
+  --rexclude $REXCLUDE \
+  --cache-file=/var/cache/s3cmd_cache \
+  --delete-removed $source_dir ${BUCKET_OBJECT%/}/${source_dir#/} || true
+done
 
 total_time=$(($(date +%s)-start_time))
-echo "Total time: ${total_time}"
+echo "Total time: ${total_time} seconds"
