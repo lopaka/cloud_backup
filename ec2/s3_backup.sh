@@ -102,6 +102,7 @@ done
 
 # Iterate backup of each directory in SOURCE_DIRS
 for source_dir in ${SOURCE_DIRS}; do
+  echo "------ BACKING UP: ${source_dir}"
   # Return true in the event s3cmd fails in order to continue with other backups.
   # Remember, STDOUT and STDERR are sent to logfile
   $s3cmd sync \
