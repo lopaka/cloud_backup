@@ -105,6 +105,7 @@ mkdir -p /var/cache/s3cmd
 
 # Iterate backup of each directory in SOURCE_DIRS
 for source_dir in ${SOURCE_DIRS}; do
+  source_dir="${source_dir%/}"
   echo "------ BACKING UP: ${source_dir}"
   # Return true in the event s3cmd fails in order to continue with other backups.
   # Remember, STDOUT and STDERR are sent to logfile
@@ -115,7 +116,7 @@ for source_dir in ${SOURCE_DIRS}; do
   --storage-class=$STORAGE_CLASS \
   --rexclude $REXCLUDE \
   --cache-file=/var/cache/s3cmd/sync_cache${source_dir//\//_} \
-  --delete-removed $source_dir ${BUCKET_OBJECT%/}/${source_dir#/} || true
+  --delete-removed $source_dir ${BUCKET_OBJECT%/}/${source_dir#/}/ || true
 done
 
 total_time=$(($(date +%s)-start_time))
