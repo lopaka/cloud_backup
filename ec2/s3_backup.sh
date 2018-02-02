@@ -106,10 +106,10 @@ mkdir -p /var/cache/s3cmd
 # Iterate backup of each directory in SOURCE_DIRS
 for source_dir in ${SOURCE_DIRS}; do
   # Remove trailing slash if exists
-  source_dir="${source_dir%/}"
+  source_dir=$([ "${source_dir}" == "/" ] && echo "/" || echo "${source_dir%/}")
 
   # Create S3 URI which must end with '/'
-  s3_uri=$([ -z ${source_dir} ] && echo "${BUCKET_OBJECT%/}/" || echo "${BUCKET_OBJECT%/}/${source_dir#/}/")
+  s3_uri=$([ "${source_dir}" = "/" ] && echo "${BUCKET_OBJECT%/}/" || echo "${BUCKET_OBJECT%/}/${source_dir#/}/")
 
   echo "------ BACKING UP: ${source_dir}"
   # Return true in the event s3cmd fails in order to continue with other backups.
