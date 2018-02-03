@@ -121,7 +121,7 @@ for source_dir in ${SOURCE_DIRS}; do
   --storage-class=$STORAGE_CLASS \
   --rexclude $REXCLUDE \
   --cache-file=/var/cache/s3cmd/sync_cache${source_dir//\//_} \
-  --delete-removed $source_dir $s3_uri || true
+  --delete-removed ${source_dir}/ ${s3_uri} || true
 done
 
 total_time=$(($(date +%s)-start_time))
