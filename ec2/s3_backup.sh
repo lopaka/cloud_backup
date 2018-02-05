@@ -11,8 +11,8 @@
 #   BUCKET_OBJECT=s3://bucket/object/
 #   STORAGE_CLASS=STANDARD_IA
 #   # source hash with dir as key and rexclude string as value
-#   SOURCE_DIRS_REXCLUDE["/home"]='^\/tmp\/'
-#   SOURCE_DIRS_REXCLUDE["/var"]='^\/(cache|lock|run|tmp)\/'
+#   SOURCE_DIRS_REXCLUDE["/home"]='^tmp\/'
+#   SOURCE_DIRS_REXCLUDE["/var"]="^(cache|lock|run|tmp)\/"
 #   SOURCE_DIRS_REXCLUDE["/etc"]=''
 #   LOG_DIR=/var/log
 #   # OPTIONAL:
@@ -37,7 +37,6 @@ REQUIRED_VARS="ACCESS_KEY_ID \
   SECRET_ACCESS_KEY \
   BUCKET_OBJECT \
   STORAGE_CLASS \
-  REXCLUDE \
   LOG_DIR"
 for check_var in ${REQUIRED_VARS}; do
   if [[ -z ${!check_var+x} ]]; then
@@ -126,7 +125,7 @@ for source_dir in ${!SOURCE_DIRS_REXCLUDE[@]}; do
   echo "------ BACKING UP: ${source_dir}"
   # Return true in the event s3cmd fails in order to continue with other backups.
   # Remember, STDOUT and STDERR are sent to logfile
-  $s3cmd sync \
+  eval $s3cmd sync \
   --access_key=$ACCESS_KEY_ID \
   --secret_key=$SECRET_ACCESS_KEY \
   --verbose \
