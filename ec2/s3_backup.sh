@@ -9,9 +9,11 @@
 #   ACCESS_KEY_ID=ABCDEFGHIJKLMNOP1234
 #   SECRET_ACCESS_KEY=AbCdEfGhIjKlMnOpQrStUvWxYz78934+24jsldiu
 #   BUCKET_OBJECT=s3://bucket/object/
-#   SOURCE_DIRS="/home /etc /usr/local"
 #   STORAGE_CLASS=STANDARD_IA
-#   REXCLUDE='^(proc|dev|tmp|media|mnt|sys|run|var\/run|var\/lock|var\/cache\/apt\/archives)/|^swapfile|^var\/lib\/php5\/sess_' \
+#   # source hash with dir as key and rexclude string as value
+#   SOURCE_DIRS_REXCLUDE["/home"]='^\/tmp\/'
+#   SOURCE_DIRS_REXCLUDE["/var"]='^\/(cache|lock|run|tmp)\/'
+#   SOURCE_DIRS_REXCLUDE["/etc"]=''
 #   LOG_DIR=/var/log
 #   # OPTIONAL:
 #   S3CMD_PATH=/usr/local/bin/s3cmd
@@ -26,13 +28,14 @@ if [[ ! -e $1 ]]; then
   echo "'$1' DOES NOT EXIST"
   exit 1
 fi
+# Initialize associative array (aka hash) before reading config
+declare -A SOURCE_DIRS_REXCLUDE
 source "$1"
 
 # Verify all required vars
 REQUIRED_VARS="ACCESS_KEY_ID \
   SECRET_ACCESS_KEY \
   BUCKET_OBJECT \
-  SOURCE_DIRS \
   STORAGE_CLASS \
   REXCLUDE \
   LOG_DIR"
@@ -42,6 +45,12 @@ for check_var in ${REQUIRED_VARS}; do
     exit 1
   fi
 done
+
+# Verify source dirs provided
+if [[ ${#SOURCE_DIRS_REXCLUDE[@]} -eq 0 ]]; then
+  echo "SOURCE_DIRS_REXCLUDE not used to set source directories - exiting"
+  exit 1
+fi
 
 # verify s3cmd is installed
 if [ -z ${S3CMD_PATH+x} ]; then
@@ -93,7 +102,7 @@ else
 fi
 
 # Verify each dir in directory list
-for source_dir in ${SOURCE_DIRS}; do
+for source_dir in ${!SOURCE_DIRS_REXCLUDE[@]}; do
   if [ ! -d "${source_dir}" ]; then
     echo "ERROR: SOURCE DIRECTORY, ${source_dir}, IS NOT A DIRECTORY - EXITING"
     exit 1
@@ -103,13 +112,16 @@ done
 # Make sure cache dir exists
 mkdir -p /var/cache/s3cmd
 
-# Iterate backup of each directory in SOURCE_DIRS
-for source_dir in ${SOURCE_DIRS}; do
+# Iterate backup of each directory in SOURCE_DIRS_REXCLUDE
+for source_dir in ${!SOURCE_DIRS_REXCLUDE[@]}; do
   # Remove trailing slash if exists
   source_dir=$([ "${source_dir}" == "/" ] && echo "/" || echo "${source_dir%/}")
 
   # Create S3 URI which must end with '/'
-  s3_uri=$([ "${source_dir}" = "/" ] && echo "${BUCKET_OBJECT%/}/" || echo "${BUCKET_OBJECT%/}/${source_dir#/}/")
+  s3_uri=$([ "${source_dir}" == "/" ] && echo "${BUCKET_OBJECT%/}/" || echo "${BUCKET_OBJECT%/}/${source_dir#/}/")
+
+  # Generate --rexclude flag
+  rexclude_flag=$([ "${SOURCE_DIRS_REXCLUDE[$source_dir]}" == "" ] && echo "" || echo "--rexclude '${SOURCE_DIRS_REXCLUDE[$source_dir]}'")
 
   echo "------ BACKING UP: ${source_dir}"
   # Return true in the event s3cmd fails in order to continue with other backups.
@@ -119,7 +131,7 @@ for source_dir in ${SOURCE_DIRS}; do
   --secret_key=$SECRET_ACCESS_KEY \
   --verbose \
   --storage-class=$STORAGE_CLASS \
-  --rexclude $REXCLUDE \
+  $rexclude_flag \
   --cache-file=/var/cache/s3cmd/sync_cache${source_dir//\//_} \
   --delete-removed ${source_dir}/ ${s3_uri} || true
 done
