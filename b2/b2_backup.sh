@@ -32,7 +32,11 @@ if [[ ! -e $1 ]]; then
   exit 1
 fi
 
+# Initialize associative array (aka hash) before reading config
+declare -A SOURCE_DIRS_EXCLUDE
+set -a
 source "$1"
+set +a
 
 # Verify all required vars
 REQUIRED_VARS="B2_ACCOUNT_ID \
