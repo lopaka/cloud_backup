@@ -58,7 +58,7 @@ if [[ ${#SOURCE_DIRS_EXCLUDE[@]} -eq 0 ]]; then
 fi
 
 # verify restic is installed
-if [ -z ${RESTIC_PATH+x} ]; then
+if [[ -z ${RESTIC_PATH+x} ]]; then
   restic=$(which restic || echo '/bin/false')
 else
   restic=$RESTIC_PATH
@@ -66,7 +66,7 @@ fi
 $restic version > /dev/null 2>&1 || (echo "restic not found" && exit 1)
 
 # Check if we can connect, if we can authenticate, and if bucket has been initialized
-initial_connection=$($restic -r b2:${B2_BUCKET} list snapshots --quiet || echo "fail")
+initial_connection=$($restic -r b2:"${B2_BUCKET}" list snapshots --quiet || echo "fail")
 if [[ $initial_connection == "fail" ]]; then
   echo "ERROR: check to see if bucket has been initialized (restic -r b2:${B2_BUCKET} init)"
   exit 1
@@ -97,7 +97,7 @@ echo "Creating lock file"
 echo "$$" > ${lockfile}
 
 # Verify each dir in directory list
-for source_dir in ${!SOURCE_DIRS_EXCLUDE[@]}; do
+for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
   if [ ! -d "${source_dir}" ]; then
     echo "ERROR: SOURCE DIRECTORY, ${source_dir}, IS NOT A DIRECTORY - EXITING"
     exit 1
@@ -105,24 +105,28 @@ for source_dir in ${!SOURCE_DIRS_EXCLUDE[@]}; do
 done
 
 # Iterate backup of each directory in SOURCE_DIRS_EXCLUDE
-for source_dir in ${!SOURCE_DIRS_EXCLUDE[@]}; do
-  # Remove trailing slash if exists
-  source_dir=$([ "${source_dir}" == "/" ] && echo "/" || echo "${source_dir%/}")
+for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
+  command_line=( $restic )
+  command_line+=( --repo b2:${B2_BUCKET} )
+  command_line+=( backup )
 
   # Generate --exclude flags
-  exclude_flags=""
   for exclude_value in ${SOURCE_DIRS_EXCLUDE[$source_dir]}; do
-    exclude_flags+=" --exclude='${exclude_value}'"
+    command_line+=( --exclude="${exclude_value}" )
   done
+
+  # Add one-file-system option
+  command_line+=( --one-file-system )
+
+  # Remove trailing slash if exists
+  source_dir=$([ "${source_dir}" == "/" ] && echo "/" || echo "${source_dir%/}")
+  command_line+=( $source_dir )
 
   echo "------ BACKING UP: ${source_dir}"
   # Return true in the event restic fails in order to continue with other backups
   # Remember, STDOUT and STDERR are sent to logfile
   # Ex: restic --repo b2:bucketname backup --exclude='/var/cache' --exclude='/var/lock' --one-file-system /var
-  eval $restic --repo b2:${B2_BUCKET} backup \
-    $exclude_flags \
-    --one-file-system \
-    ${source_dir} || true
+  "${command_line[@]}" || true
 done
 
 rm ${lockfile}
