@@ -39,12 +39,14 @@ source "$1"
 set +a
 
 # Verify all required vars
-REQUIRED_VARS="B2_ACCOUNT_ID \
-  B2_ACCOUNT_KEY \
-  RESTIC_PASSWORD \
-  B2_BUCKET \
-  LOG_DIR"
-for check_var in ${REQUIRED_VARS}; do
+REQUIRED_VARS=(
+  B2_ACCOUNT_ID
+  B2_ACCOUNT_KEY
+  RESTIC_PASSWORD
+  B2_BUCKET
+  LOG_DIR
+)
+for check_var in "${REQUIRED_VARS[@]}"; do
   if [[ -z ${!check_var+x} ]]; then
     echo "$check_var does not exist - exiting"
     exit 1
