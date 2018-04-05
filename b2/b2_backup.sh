@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash
 #
 # b2_backup.sh - backup directories using restic to backblaze b2 cloud storage
 #
@@ -22,13 +22,35 @@
 #   RESTIC_PATH=/usr/local/bin/restic
 #
 
-# Read in required config file
-if [[ $# -ne 1 ]]; then
-  echo "CONFIG FILE ARG REQUIRED"
+# Error out immediatly upon error
+set -e
+
+# Function to prevent simultaneous executions of script
+lock() {
+  local -r script_name="$(basename "$0")"
+  local -r lock_file="/var/lock/${script_name%.*}"
+
+  # File descriptor/handle 200 used
+  exec 200>"$lock_file"
+  if ! flock -n 200; then
+    echo "Unable to obtain lock - exiting"
+    exit 1
+  fi
+}
+
+# Load command line args
+args=( "$@" )
+
+# Check config file was passed to command
+if [[ ${args[0]} == '' ]]; then
+  echo "ERROR: CONFIG FILE ARG REQUIRED"
   exit 1
 fi
-if [[ ! -e $1 ]]; then
-  echo "'$1' DOES NOT EXIST"
+config_file=${args[0]}
+
+# Check config file exists
+if [[ ! -f $config_file ]]; then
+  echo "ERROR: Config file does not exist: $config_file"
   exit 1
 fi
 
@@ -79,24 +101,11 @@ mkdir -p "${LOG_DIR}"
 logfile="${LOG_DIR}/b2backup-$(date +%Y%m%d-%H%M%S).log"
 exec > "$logfile" 2>&1
 
+# prevent simultanious script runs
+lock
+
 start_time=$(date +%s)
 echo "Starting time: ${start_time}"
-
-# check for lock file and if backup already running
-lockfile=/var/run/b2_backup.lock
-if [ -e ${lockfile} ]; then
-  echo "Lock file exists - ${lockfile} - verifying pid"
-  old_pid=$(cat ${lockfile})
-  pid_check=$(ps -h -p "${old_pid}" || echo 'fail')
-  if [[ "${pid_check}" == 'fail' ]]; then
-    echo "Lock file does not contain active pid (${old_pid}) - continuing"
-  else
-    echo "Backup already running - $pid_check - exiting"
-    exit 1
-  fi
-fi
-echo "Creating lock file"
-echo "$$" > ${lockfile}
 
 # Verify each dir in directory list
 for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
@@ -108,9 +117,11 @@ done
 
 # Iterate backup of each directory in SOURCE_DIRS_EXCLUDE
 for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
-  command_line=( $restic )
-  command_line+=( --repo b2:${B2_BUCKET} )
-  command_line+=( backup )
+  command_line=(
+    $restic
+    --repo b2:${B2_BUCKET}
+    backup
+  )
 
   # Generate --exclude flags
   for exclude_value in ${SOURCE_DIRS_EXCLUDE[$source_dir]}; do
@@ -131,6 +142,5 @@ for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
   "${command_line[@]}" || true
 done
 
-rm ${lockfile}
 total_time=$(($(date +%s)-start_time))
 echo "Total time: ${total_time} seconds"
