@@ -117,6 +117,7 @@ done
 
 # Iterate backup of each directory in SOURCE_DIRS_EXCLUDE
 for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
+  error=false
   command_line=(
     $restic
     --repo b2:${B2_BUCKET}
@@ -136,10 +137,13 @@ for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
   command_line+=( $source_dir )
 
   echo "------ BACKING UP: ${source_dir}"
-  # Return true in the event restic fails in order to continue with other backups
-  # Remember, STDOUT and STDERR are sent to logfile
   # Ex: restic --repo b2:bucketname backup --exclude='/var/cache' --exclude='/var/lock' --one-file-system /var
-  "${command_line[@]}" || true
+  command_output=$("${command_line[@]}" 2>&1) || error=true
+
+  if [[ $error == "true" ]]; then
+    echo "!!!! ERROR ENCOUNTERED !!!!"
+  fi
+  echo "$command_output"
 done
 
 total_time=$(($(date +%s)-start_time))
