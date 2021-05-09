@@ -155,10 +155,11 @@ for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
   command_line+=( "$source_dir" )
 
   # Destination to B2 bucket
-  command_line+=( "b2://${BUCKET}/" )
+  dest_dir=$([ "${source_dir}" == "/" ] && echo "" || echo "${source_dir}/")
+  command_line+=( "b2://${BUCKET}/${dest_dir}" )
 
   echo "------ BACKING UP: ${source_dir}"
-  # Ex: b2 --delete --excludeDirRegex ^tmp$ --excludeDirRegex ^archive/tmp$ /home backup_bucket
+  # Ex: b2 --delete --excludeDirRegex ^tmp$ --excludeDirRegex ^archive/tmp$ /home b2://backup_bucket/home/
   echo "COMMAND LINE:"
   echo "${command_line[@]}"
   command_output=$("${command_line[@]}" 2>&1) || error=true
