@@ -1,25 +1,29 @@
 #!/bin/bash
 #
-# b2_backup.sh - backup directories using restic to backblaze b2 cloud storage
+# b2_backup.sh - backup directories to backblaze b2 cloud storage
+# using using b2 sync command. See:
+#   * https://www.backblaze.com/b2/docs/quick_command_line.html
+#
+# b2 binary can be downloaded from:
+#   https://github.com/Backblaze/B2_Command_Line_Tool/releases/latest/download/b2-linux
 #
 # usage: b2_backup.sh /path/to/config/file
 #
 # config file example - order does not matter:
 #   # REQUIRED:
-#   B2_ACCOUNT_ID=983ea7b52837
-#   B2_ACCOUNT_KEY=0005c8c4555555555555555555ffffffffffffdddd
-#   RESTIC_PASSWORD=password123
-#   B2_BUCKET=mybucket
+#   B2_APPLICATION_KEY_ID=000xxxxxxxxx1111111222222
+#   B2_APPLICATION_KEY=abcdefgabcdeggsjklcz255tyt20acr
+#   BUCKET=mybucket
 #   LOG_DIR=/var/log/b2backup
 #
 #   # source hash with dir as key and space delimited
-#   # list of directories to exclude
-#   SOURCE_DIRS_REXCLUDE["/home"]='/home/tmp'
-#   SOURCE_DIRS_REXCLUDE["/var"]='/var/cache /var/lock /var/run /var/tmp'
+#   # list of directories in directory to exclude
+#   SOURCE_DIRS_REXCLUDE["/home"]='tmp'
+#   SOURCE_DIRS_REXCLUDE["/var"]='cache lock run tmp'
 #   SOURCE_DIRS_REXCLUDE["/etc"]=''
 #
 #   # OPTIONAL:
-#   RESTIC_PATH=/usr/local/bin/restic
+#   DRY_RUN=true
 #
 
 # Error out immediatly upon error
@@ -41,6 +45,10 @@ lock() {
 # Load command line args
 args=( "$@" )
 
+# set constants
+B2_BINARY=/usr/local/bin/b2
+B2_VERSION=2.4.0
+
 # Check config file was passed to command
 if [[ ${args[0]} == '' ]]; then
   echo "ERROR: CONFIG FILE ARG REQUIRED"
@@ -54,18 +62,35 @@ if [[ ! -f $config_file ]]; then
   exit 1
 fi
 
+# Check b2 binary is installed
+if [[ ! -x ${B2_BINARY} ]]; then
+  echo "ERROR: ${B2_BINARY} not installed"
+  exit 1
+fi
+
+# Check b2 version
+b2_version_check=$(${B2_BINARY} version | grep ${B2_VERSION} || echo "FAIL")
+if [[ ${b2_version_check} == "FAIL" ]]; then
+  echo "ERROR: b2 version ${B2_VERSION} not installed"
+  exit 1
+fi
+
 # Initialize associative array (aka hash) before reading config
 declare -A SOURCE_DIRS_EXCLUDE
+
+# -a: Each variable or function that is created or modified is
+# given the export attribute and marked for export to  the
+# environment of subsequent commands.
 set -a
-source "$1"
+source "${config_file}"
 set +a
+
 
 # Verify all required vars
 REQUIRED_VARS=(
-  B2_ACCOUNT_ID
-  B2_ACCOUNT_KEY
-  RESTIC_PASSWORD
-  B2_BUCKET
+  B2_APPLICATION_KEY_ID
+  B2_APPLICATION_KEY
+  BUCKET
   LOG_DIR
 )
 for check_var in "${REQUIRED_VARS[@]}"; do
@@ -81,18 +106,10 @@ if [[ ${#SOURCE_DIRS_EXCLUDE[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# verify restic is installed
-if [[ -z ${RESTIC_PATH+x} ]]; then
-  restic=$(which restic || echo '/bin/false')
-else
-  restic=$RESTIC_PATH
-fi
-$restic version > /dev/null 2>&1 || (echo "restic not found" && exit 1)
-
-# Check if we can connect, if we can authenticate, and if bucket has been initialized
-initial_connection=$($restic -r b2:"${B2_BUCKET}" list snapshots --quiet || echo "fail")
-if [[ $initial_connection == "fail" ]]; then
-  echo "ERROR: check to see if bucket has been initialized (restic -r b2:${B2_BUCKET} init)"
+# Check if we can authenticate, and check bucket
+bucket_info=$(${B2_BINARY} get-bucket --showSize "${BUCKET}" || echo "fail")
+if [[ $bucket_info == "fail" ]]; then
+  echo "ERROR: issues authenticating and getting bucket info (${B2_BINARY} get-bucket --showSize ${BUCKET})"
   exit 1
 fi
 
@@ -118,32 +135,38 @@ done
 # Iterate backup of each directory in SOURCE_DIRS_EXCLUDE
 for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
   error=false
-  command_line=(
-    $restic
-    --repo b2:${B2_BUCKET}
-    backup
-  )
+  command_line=( "$B2_BINARY" sync )
 
-  # Generate --exclude flags
+  # Delete files on destination NOT IN SOURCE
+  command_line+=( --delete )
+
+  # Generate exclude flags
   for exclude_value in ${SOURCE_DIRS_EXCLUDE[$source_dir]}; do
-    command_line+=( --exclude="${exclude_value}" )
+    # make sure no trailing slash is at end of directory and close with $
+    command_line+=( --excludeDirRegex "^${exclude_value%/}$" )
   done
 
-  # Add one-file-system option
-  command_line+=( --one-file-system )
+  if [[ $DRY_RUN == "true" ]]; then
+    command_line+=( --dryRun )
+  fi
 
   # Remove trailing slash if exists
   source_dir=$([ "${source_dir}" == "/" ] && echo "/" || echo "${source_dir%/}")
-  command_line+=( $source_dir )
+  command_line+=( "$source_dir" )
+
+  # Destination to B2 bucket
+  command_line+=( "b2://${BUCKET}/" )
 
   echo "------ BACKING UP: ${source_dir}"
-  # Ex: restic --repo b2:bucketname backup --exclude='/var/cache' --exclude='/var/lock' --one-file-system /var
+  # Ex: b2 --delete --excludeDirRegex ^tmp$ --excludeDirRegex ^archive/tmp$ /home backup_bucket
+  echo "COMMAND LINE:"
+  echo "${command_line[@]}"
   command_output=$("${command_line[@]}" 2>&1) || error=true
 
   if [[ $error == "true" ]]; then
     echo "!!!! ERROR ENCOUNTERED !!!!"
   fi
-  echo "$command_output"
+  echo "${command_output[@]}"
 done
 
 total_time=$(($(date +%s)-start_time))
