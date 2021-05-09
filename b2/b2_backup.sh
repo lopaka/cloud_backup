@@ -140,6 +140,9 @@ for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
   # Delete files on destination NOT IN SOURCE
   command_line+=( --delete )
 
+  # do not show progress of upload (but will still show file) in stdout
+  command_line+=( --noProgress )
+
   # Generate exclude flags
   for exclude_value in ${SOURCE_DIRS_EXCLUDE[$source_dir]}; do
     # make sure no trailing slash is at end of directory and close with $
