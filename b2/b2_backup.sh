@@ -1,29 +1,29 @@
 #!/bin/bash
 #
-# b2_backup.sh - backup directories to backblaze b2 cloud storage
-# using using b2 sync command. See:
-#   * https://www.backblaze.com/b2/docs/quick_command_line.html
+# b2_backup.sh - backup directories using b2 CLI to backup to backblaze B2 cloud storage
 #
-# b2 binary can be downloaded from:
-#   https://github.com/Backblaze/B2_Command_Line_Tool/releases/latest/download/b2-linux
+# Download b2 cli from:
+# https://github.com/Backblaze/B2_Command_Line_Tool/releases/latest/download/b2-linux
 #
 # usage: b2_backup.sh /path/to/config/file
 #
 # config file example - order does not matter:
 #   # REQUIRED:
-#   B2_APPLICATION_KEY_ID=000xxxxxxxxx1111111222222
-#   B2_APPLICATION_KEY=abcdefgabcdeggsjklcz255tyt20acr
-#   BUCKET=mybucket
+#   B2_APPLICATION_KEY_ID=0987654321abc0987654321ab
+#   B2_APPLICATION_KEY=A00000000000000000000000000000B
+#   B2_BUCKET=mybucket
 #   LOG_DIR=/var/log/b2backup
 #
-#   # source hash with dir as key and space delimited
-#   # list of directories in directory to exclude
-#   SOURCE_DIRS_REXCLUDE["/home"]='tmp'
-#   SOURCE_DIRS_REXCLUDE["/var"]='cache lock run tmp'
-#   SOURCE_DIRS_REXCLUDE["/etc"]=''
+#   # source hash with dir to backup as key and space delimited
+#   # list of directories via regex to exclude
+#   SOURCE_DIRS_EXCLUDE["/home"]='^office_share/\.recycle$ ^machine_backups$ ^machine_backups_BACK$'
+#   SOURCE_DIRS_EXCLUDE["/var"]='^cache$ ^lock$ ^run$ ^tmp$ ^spool/postfix$ ^lib/samba/private/msg.sock$ ^lib/lxd$'
+#   SOURCE_DIRS_EXCLUDE["/etc"]=''
+#   SOURCE_DIRS_EXCLUDE["/root"]=''
+#   SOURCE_DIRS_EXCLUDE["/usr/local"]=''
 #
 #   # OPTIONAL:
-#   DRY_RUN=true
+#   B2_CLI_PATH=/usr/local/bin/b2
 #
 
 # Error out immediatly upon error
@@ -45,10 +45,6 @@ lock() {
 # Load command line args
 args=( "$@" )
 
-# set constants
-B2_BINARY=/usr/local/bin/b2
-B2_VERSION=2.4.0
-
 # Check config file was passed to command
 if [[ ${args[0]} == '' ]]; then
   echo "ERROR: CONFIG FILE ARG REQUIRED"
@@ -62,35 +58,18 @@ if [[ ! -f $config_file ]]; then
   exit 1
 fi
 
-# Check b2 binary is installed
-if [[ ! -x ${B2_BINARY} ]]; then
-  echo "ERROR: ${B2_BINARY} not installed"
-  exit 1
-fi
-
-# Check b2 version
-b2_version_check=$(${B2_BINARY} version | grep ${B2_VERSION} || echo "FAIL")
-if [[ ${b2_version_check} == "FAIL" ]]; then
-  echo "ERROR: b2 version ${B2_VERSION} not installed"
-  exit 1
-fi
-
 # Initialize associative array (aka hash) before reading config
 declare -A SOURCE_DIRS_EXCLUDE
-
-# -a: Each variable or function that is created or modified is
-# given the export attribute and marked for export to  the
-# environment of subsequent commands.
 set -a
-source "${config_file}"
+# shellcheck source=/dev/null
+source "$1"
 set +a
-
 
 # Verify all required vars
 REQUIRED_VARS=(
   B2_APPLICATION_KEY_ID
   B2_APPLICATION_KEY
-  BUCKET
+  B2_BUCKET
   LOG_DIR
 )
 for check_var in "${REQUIRED_VARS[@]}"; do
@@ -106,10 +85,18 @@ if [[ ${#SOURCE_DIRS_EXCLUDE[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# Check if we can authenticate, and check bucket
-bucket_info=$(${B2_BINARY} get-bucket --showSize "${BUCKET}" || echo "fail")
-if [[ $bucket_info == "fail" ]]; then
-  echo "ERROR: issues authenticating and getting bucket info (${B2_BINARY} get-bucket --showSize ${BUCKET})"
+# verify b2 cli is installed
+if [[ -z ${B2_CLI_PATH+x} ]]; then
+  b2_cli=$(command -v b2 || echo '/bin/false')
+else
+  b2_cli=$B2_CLI_PATH
+fi
+$b2_cli version > /dev/null 2>&1 || (echo "b2 CLI not found" && exit 1)
+
+# Check if we can connect, if we can authenticate, and if bucket has been initialized
+initial_connection=$($b2_cli get-bucket ${B2_BUCKET} || echo "fail")
+if [[ $initial_connection == "fail" ]]; then
+  echo "ERROR: check to see if bucket has been initialized"
   exit 1
 fi
 
@@ -135,42 +122,29 @@ done
 # Iterate backup of each directory in SOURCE_DIRS_EXCLUDE
 for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
   error=false
-  command_line=( "$B2_BINARY" sync )
+  command_line=( ${b2_cli} sync --noProgress --replaceNewer --excludeAllSymlinks )
 
-  # Delete files on destination NOT IN SOURCE
-  command_line+=( --delete )
-
-  # do not show progress of upload (but will still show file) in stdout
-  command_line+=( --noProgress )
-
-  # Generate exclude flags
+  # Generate --exclude flags
+  regex_string=""
   for exclude_value in ${SOURCE_DIRS_EXCLUDE[$source_dir]}; do
-    # make sure no trailing slash is at end of directory and close with $
-    command_line+=( --excludeDirRegex "^${exclude_value%/}$" )
+    regex_string+="${exclude_value}|"
   done
-
-  if [[ $DRY_RUN == "true" ]]; then
-    command_line+=( --dryRun )
+  if [[ $regex_string != "" ]]; then
+    command_line+=( --excludeDirRegex ${regex_string%|} )
   fi
 
   # Remove trailing slash if exists
   source_dir=$([ "${source_dir}" == "/" ] && echo "/" || echo "${source_dir%/}")
-  command_line+=( "$source_dir" )
-
-  # Destination to B2 bucket
-  dest_dir=$([ "${source_dir}" == "/" ] && echo "" || echo "${source_dir}/")
-  command_line+=( "b2://${BUCKET}/${dest_dir}" )
+  command_line+=( $source_dir b2://${B2_BUCKET}${source_dir} )
 
   echo "------ BACKING UP: ${source_dir}"
-  # Ex: b2 --delete --excludeDirRegex ^tmp$ --excludeDirRegex ^archive/tmp$ /home b2://backup_bucket/home/
-  echo "COMMAND LINE:"
+  # Ex: b2 sync --excludeDirRegex '\.recycle' /home/office_share b2://${B2_BUCKET}/home/office_share
   echo "${command_line[@]}"
-  command_output=$("${command_line[@]}" 2>&1) || error=true
+  ( "${command_line[@]}" 2>&1 ) || error=true
 
   if [[ $error == "true" ]]; then
     echo "!!!! ERROR ENCOUNTERED !!!!"
   fi
-  echo "${command_output[@]}"
 done
 
 total_time=$(($(date +%s)-start_time))
