@@ -45,21 +45,30 @@ lock() {
   fi
 }
 
-# inform alerts or updates
+# inform alerts or updates - will email if:
+# * ssmtp is installed
+# * EMAIL_FROM *and* EMAIL_TO provided
 #
-# $1: subject
-# $2: message
+# params:
+#  $1 = subject
+#  $2 = message
 #
 inform() {
-  subject=$1
-  message=$2
+  local subject=$1
+  local message=$2
+
   if [[ -n ${EMAIL_FROM} ]] && [[ -n ${EMAIL_TO} ]]; then
-    mail_installed=$(mail --version > /dev/null 2>&1 && echo "true" || echo "false")
-    if [[ $mail_installed == "true" ]]; then
+    local ssmtp_installed=$(ssmtp -V > /dev/null 2>&1 && echo "true" || echo "false")
+    if [[ $ssmtp_installed == "true" ]]; then
       # sending email
-      echo "${message}" | mail -s "${subject}" -a "From: ${EMAIL_FROM}" "${EMAIL_TO}"
+      local mail_msg="From: ${EMAIL_FROM}"$'\n'
+      mail_msg+="To: ${EMAIL_TO}"$'\n'
+      mail_msg+="Subject: ${subject}"$'\n'
+      mail_msg+=$'\n'
+      mail_msg+="${message//\\n/$'\n'}"
+      ssmtp -t <<< "$mail_msg"
     else
-      echo "mail not installed - not sending email"
+      echo "ssmtp not installed - not sending email"
     fi
   fi
   echo "${subject} : ${message}"
@@ -172,3 +181,4 @@ done
 
 total_time=$(($(date +%s)-start_time))
 echo "Total time: ${total_time} seconds"
+inform "${HOSTNAME}: backup completed" "Total time: ${total_time} seconds\nLogfile: ${logfile}\nErrors encountered: ${error}"
