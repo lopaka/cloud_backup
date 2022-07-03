@@ -24,6 +24,9 @@
 #
 #   # OPTIONAL:
 #   B2_CLI_PATH=/usr/local/bin/b2
+#   # if EMAIL_FROM, *and* EMAIL_TO are not set, inform email will be skipped and just logged
+#   EMAIL_FROM='admin@address'
+#   EMAIL_TO='recipient@address'
 #
 
 # Error out immediatly upon error
@@ -40,6 +43,26 @@ lock() {
     echo "Unable to obtain lock - exiting"
     exit 1
   fi
+}
+
+# inform alerts or updates
+#
+# $1: subject
+# $2: message
+#
+inform() {
+  subject=$1
+  message=$2
+  if [[ -n ${EMAIL_FROM} ]] && [[ -n ${EMAIL_TO} ]]; then
+    mail_installed=$(mail --version > /dev/null 2>&1 && echo "true" || echo "false")
+    if [[ $mail_installed == "true" ]]; then
+      # sending email
+      echo "${message}" | mail -s "${subject}" -a "From: ${EMAIL_FROM}" "${EMAIL_TO}"
+    else
+      echo "mail not installed - not sending email"
+    fi
+  fi
+  echo "${subject} : ${message}"
 }
 
 # Load command line args
@@ -94,7 +117,7 @@ fi
 $b2_cli version > /dev/null 2>&1 || (echo "b2 CLI not found" && exit 1)
 
 # Check if we can connect, if we can authenticate, and if bucket has been initialized
-initial_connection=$($b2_cli get-bucket ${B2_BUCKET} || echo "fail")
+initial_connection=$($b2_cli get-bucket "${B2_BUCKET}" || echo "fail")
 if [[ $initial_connection == "fail" ]]; then
   echo "ERROR: check to see if bucket has been initialized"
   exit 1
@@ -143,7 +166,7 @@ for source_dir in "${!SOURCE_DIRS_EXCLUDE[@]}"; do
   ( "${command_line[@]}" 2>&1 ) || error=true
 
   if [[ $error == "true" ]]; then
-    echo "!!!! ERROR ENCOUNTERED !!!!"
+    inform "ERROR ENCOUNTERED BACKING UP ${HOSTNAME}:${source_dir}" "SEE ${HOSTNAME}:${logfile}"
   fi
 done
 
